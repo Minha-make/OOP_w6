@@ -5,80 +5,72 @@
 
 namespace DeviceManagement;
 
-// Giả định thiết kế:
-// 1. Số năm sử dụng (UsageYears) tính bằng năm hiện tại trừ đi YearInUse (>= 0).
-// 2. Trạng thái mặc định khi tạo mới thiết bị là DeviceStatus.Available nếu không truyền vào.
+// Giả định:
+// 1. Số năm sử dụng tính bằng năm hiện tại trừ đi năm đưa vào sử dụng.
+// 2. Mặc định trạng thái thiết bị là Available khi tạo mới.
 
 /// <summary>
-/// Lớp trừu tượng đại diện cho một thiết bị tổng quát trong hệ thống.
+/// Lớp trừu tượng đại diện cho thiết bị trong trường học.
 /// </summary>
 public abstract class Device
 {
     /// <summary>
-    /// Mã định danh duy nhất của thiết bị. Chỉ được thiết lập một lần khi khởi tạo.
+    /// Mã thiết bị (chỉ gán khi khởi tạo).
     /// </summary>
     public string Id { get; }
 
     /// <summary>
-    /// Tên mô tả của thiết bị.
+    /// Tên thiết bị.
     /// </summary>
     public string Name { get; set; }
 
     /// <summary>
-    /// Năm thiết bị bắt đầu được đưa vào sử dụng.
+    /// Năm đưa vào sử dụng.
     /// </summary>
     public int YearInUse { get; set; }
 
     /// <summary>
-    /// Giá mua ban đầu của thiết bị (VNĐ).
+    /// Giá mua ban đầu của thiết bị.
     /// </summary>
     public decimal PurchasePrice { get; set; }
 
     /// <summary>
-    /// Trạng thái hoạt động hiện tại của thiết bị.
+    /// Trạng thái hoạt động của thiết bị.
     /// </summary>
     public DeviceStatus Status { get; protected set; }
 
     /// <summary>
-    /// Tuổi thọ sử dụng của thiết bị (tính theo số năm từ khi đưa vào sử dụng đến năm hiện tại).
+    /// Số năm sử dụng tính đến năm hiện tại.
     /// </summary>
-    public int UsageYears => Math.Max(0, DateTime.Now.Year - YearInUse);
+    public int UsageYears => DateTime.Now.Year - YearInUse;
 
     /// <summary>
-    /// Khởi tạo một thiết bị mới với đầy đủ kiểm tra tính hợp lệ của dữ liệu đầu vào.
+    /// Khởi tạo thiết bị kèm kiểm tra dữ liệu đầu vào.
     /// </summary>
-    /// <param name="id">Mã thiết bị (bắt buộc, không rỗng).</param>
-    /// <param name="name">Tên thiết bị (bắt buộc, không rỗng).</param>
-    /// <param name="yearInUse">Năm đưa vào sử dụng (không lớn hơn năm hiện tại).</param>
-    /// <param name="purchasePrice">Giá mua ban đầu (phải lớn hơn 0).</param>
-    /// <param name="status">Trạng thái khởi tạo (mặc định là Available).</param>
-    /// <exception cref="ArgumentException">Ném ra khi mã hoặc tên thiết bị rỗng/khoảng trắng.</exception>
-    /// <exception cref="ArgumentOutOfRangeException">Ném ra khi giá mua &lt;= 0 hoặc năm sử dụng không hợp lệ.</exception>
     protected Device(string id, string name, int yearInUse, decimal purchasePrice, DeviceStatus status = DeviceStatus.Available)
     {
-        // Kiểm tra Id không được rỗng để bảo đảm tính toàn vẹn khóa định danh
+        // Kiểm tra mã thiết bị không được rỗng
         if (string.IsNullOrWhiteSpace(id))
         {
-            throw new ArgumentException("Mã thiết bị không được để trống hoặc chỉ chứa khoảng trắng.", nameof(id));
+            throw new ArgumentException("Mã thiết bị không được để trống.", nameof(id));
         }
 
-        // Kiểm tra Name không được rỗng để hiển thị thông tin rõ ràng
+        // Kiểm tra tên thiết bị không được rỗng
         if (string.IsNullOrWhiteSpace(name))
         {
-            throw new ArgumentException("Tên thiết bị không được để trống hoặc chỉ chứa khoảng trắng.", nameof(name));
+            throw new ArgumentException("Tên thiết bị không được để trống.", nameof(name));
         }
 
-        // Năm đưa vào sử dụng không được trong tương lai
-        int currentYear = DateTime.Now.Year;
-        if (yearInUse <= 0 || yearInUse > currentYear)
+        // Năm đưa vào sử dụng không được lớn hơn năm hiện tại
+        if (yearInUse > DateTime.Now.Year)
         {
-            throw new ArgumentOutOfRangeException(nameof(yearInUse), $"Năm đưa vào sử dụng ({yearInUse}) không hợp lệ (Phải từ 1 đến {currentYear}).");
+            throw new ArgumentOutOfRangeException(nameof(yearInUse), "Năm đưa vào sử dụng không được lớn hơn năm hiện tại.");
         }
 
-        // Giá mua thiết bị bắt buộc phải là số dương theo yêu cầu đề bài
+        // Giá mua phải lớn hơn 0
         if (purchasePrice <= 0)
         {
-            throw new ArgumentOutOfRangeException(nameof(purchasePrice), "Giá mua của thiết bị phải lớn hơn 0.");
+            throw new ArgumentOutOfRangeException(nameof(purchasePrice), "Giá mua phải lớn hơn 0.");
         }
 
         Id = id;
@@ -89,26 +81,24 @@ public abstract class Device
     }
 
     /// <summary>
-    /// Tính toán chi phí bảo trì dự kiến trong một năm của thiết bị (triển khai cụ thể ở từng lớp con).
+    /// Phương thức trừu tượng tính chi phí bảo trì dự kiến trong 1 năm.
     /// </summary>
-    /// <returns>Số tiền bảo trì ước tính (VNĐ).</returns>
     public abstract decimal CalculateAnnualMaintenanceCost();
 
     /// <summary>
-    /// Đưa thiết bị vào trạng thái bảo trì.
+    /// Chuyển thiết bị sang trạng thái bảo trì.
     /// </summary>
     public void MarkAsUnderMaintenance()
     {
         if (Status == DeviceStatus.Retired)
         {
-            throw new InvalidOperationException($"Không thể bảo trì thiết bị '{Id}' vì đã thanh lý (Retired).");
+            throw new InvalidOperationException("Thiết bị đã thanh lý, không thể bảo trì.");
         }
-
         Status = DeviceStatus.UnderMaintenance;
     }
 
     /// <summary>
-    /// Chuyển thiết bị sang trạng thái thanh lý (ngưng sử dụng hoàn toàn).
+    /// Thanh lý thiết bị (không dùng nữa).
     /// </summary>
     public void Retire()
     {
@@ -116,7 +106,7 @@ public abstract class Device
     }
 
     /// <summary>
-    /// Trả về chuỗi thông tin chi tiết của thiết bị.
+    /// Ghi đè ToString để in thông tin thiết bị.
     /// </summary>
     public override string ToString()
     {

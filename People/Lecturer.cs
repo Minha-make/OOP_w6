@@ -5,43 +5,31 @@
 
 namespace DeviceManagement;
 
-// Giả định thiết kế:
-// 1. Giảng viên (Lecturer) có hạn mức mượn cố định là 3 thiết bị trên mỗi phiếu.
-// 2. BorrowerId và FullName là bất biến (chỉ gán một lần trong constructor) để bảo đảm tính nhất quán định danh.
+// Giả định:
+// 1. Giảng viên được mượn tối đa 3 thiết bị trên 1 phiếu.
+// 2. Mã và họ tên chỉ gán khi khởi tạo.
 
 /// <summary>
-/// Đại diện cho đối tượng Giảng viên tham gia mượn thiết bị giảng dạy.
+/// Lớp đại diện cho Giảng viên mượn thiết bị.
 /// </summary>
 public class Lecturer : IBorrower
 {
-    /// <summary>
-    /// Mã định danh giảng viên.
-    /// </summary>
     public string BorrowerId { get; }
-
-    /// <summary>
-    /// Họ tên đầy đủ của giảng viên.
-    /// </summary>
     public string FullName { get; }
 
     /// <summary>
-    /// Khởi tạo thông tin giảng viên kèm kiểm tra tính hợp lệ của dữ liệu.
+    /// Khởi tạo giảng viên.
     /// </summary>
-    /// <param name="borrowerId">Mã giảng viên (không rỗng).</param>
-    /// <param name="fullName">Họ tên giảng viên (không rỗng).</param>
-    /// <exception cref="ArgumentException">Ném ra khi mã hoặc họ tên rỗng/khoảng trắng.</exception>
     public Lecturer(string borrowerId, string fullName)
     {
-        // Kiểm tra BorrowerId không được rỗng để bảo đảm tính toàn vẹn khóa định danh
         if (string.IsNullOrWhiteSpace(borrowerId))
         {
-            throw new ArgumentException("Mã giảng viên không được để trống hoặc chỉ chứa khoảng trắng.", nameof(borrowerId));
+            throw new ArgumentException("Mã giảng viên không được để trống.", nameof(borrowerId));
         }
 
-        // Kiểm tra FullName không được rỗng để phục vụ hiển thị chính xác
         if (string.IsNullOrWhiteSpace(fullName))
         {
-            throw new ArgumentException("Họ tên giảng viên không được để trống hoặc chỉ chứa khoảng trắng.", nameof(fullName));
+            throw new ArgumentException("Họ tên giảng viên không được để trống.", nameof(fullName));
         }
 
         BorrowerId = borrowerId;
@@ -49,19 +37,15 @@ public class Lecturer : IBorrower
     }
 
     /// <summary>
-    /// Lấy số lượng thiết bị tối đa giảng viên được phép mượn trên một phiếu (tối đa 3 thiết bị).
+    /// Giảng viên được mượn tối đa 3 thiết bị/phiếu.
     /// </summary>
-    /// <returns>Hạn mức 3 thiết bị.</returns>
     public int GetMaximumDevices()
     {
         return 3;
     }
 
-    /// <summary>
-    /// Trả về chuỗi đại diện cho giảng viên.
-    /// </summary>
     public override string ToString()
     {
-        return $"[Giảng viên] {FullName} (Mã: {BorrowerId}) - Hạn mức mượn: {GetMaximumDevices()} thiết bị";
+        return $"[Giảng viên] {FullName} (Mã: {BorrowerId}) - Hạn mức: {GetMaximumDevices()} thiết bị";
     }
 }

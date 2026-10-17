@@ -5,78 +5,71 @@
 
 namespace DeviceManagement;
 
-// Giả định thiết kế:
-// 1. SlipId, Borrower và TeachingRoom là bắt buộc và bất biến sau khi khởi tạo phiếu.
-// 2. Danh sách thiết bị mượn (_items) được bảo vệ bằng IReadOnlyList để chống sửa đổi trực tiếp từ bên ngoài.
-// 3. Quan hệ hợp thành (Composition) giữa BorrowingSlip và BorrowItem: Xóa phiếu thì các mục BorrowItem trong phiếu mất đi,
-//    nhưng thiết bị TeachingDevice và người mượn Borrower vẫn tồn tại độc lập (theo đúng quy tắc mục 7 của đề bài).
-// 4. Các phương thức lọc GetOverdueItems(asOf) và GetUnreturnedItems() trả về danh sách mới, không làm thay đổi trạng thái phiếu.
+// Giả định:
+// 1. SlipId, Borrower và TeachingRoom là bắt buộc khi tạo phiếu.
+// 2. Xóa phiếu thì các mục mượn mất đi nhưng người mượn và thiết bị vẫn tồn tại (kết tập/hợp thành).
+// 3. Toàn bộ validation được thực hiện trước khi đổi trạng thái để đảm bảo dữ liệu nhất quán.
 
 /// <summary>
-/// Đại diện cho một phiếu mượn thiết bị giảng dạy của giảng viên hoặc trợ giảng cho một phòng học cụ thể.
+/// Đại diện cho phiếu mượn thiết bị của giảng viên/trợ giảng.
 /// </summary>
 public class BorrowingSlip
 {
-    private readonly List<BorrowItem> _items = new();
+    private List<BorrowItem> _items = new List<BorrowItem>();
 
     /// <summary>
-    /// Mã định danh phiếu mượn.
+    /// Mã phiếu mượn.
     /// </summary>
     public string SlipId { get; }
 
     /// <summary>
-    /// Đối tượng người mượn thiết bị (Giảng viên hoặc Trợ giảng).
+    /// Người mượn thiết bị.
     /// </summary>
     public IBorrower Borrower { get; }
 
     /// <summary>
-    /// Tên hoặc mã phòng học sử dụng thiết bị.
+    /// Phòng dạy sử dụng thiết bị.
     /// </summary>
     public string TeachingRoom { get; }
 
     /// <summary>
-    /// Ngày giờ tạo phiếu mượn thiết bị.
+    /// Ngày mượn thiết bị.
     /// </summary>
     public DateTime BorrowedDate { get; }
 
     /// <summary>
-    /// Danh sách các mục thiết bị trong phiếu (chỉ đọc để bảo đảm tính đóng gói).
+    /// Danh sách thiết bị trong phiếu.
     /// </summary>
-    public IReadOnlyList<BorrowItem> Items => _items.AsReadOnly();
+    public IReadOnlyList<BorrowItem> Items => _items;
 
     /// <summary>
-    /// Khởi tạo một phiếu mượn thiết bị kèm kiểm tra tính hợp lệ của thông tin ban đầu.
+    /// Khởi tạo phiếu mượn.
     /// </summary>
-    /// <param name="slipId">Mã phiếu mượn (không rỗng).</param>
-    /// <param name="borrower">Người mượn (không null).</param>
-    /// <param name="teachingRoom">Phòng học sử dụng (không rỗng).</param>
-    /// <param name="borrowedDate">Ngày giờ mượn thiết bị.</param>
-    /// <exception cref="ArgumentException">Ném ra khi SlipId hoặc TeachingRoom rỗng/chỉ chứa khoảng trắng.</exception>
-    /// <exception cref="ArgumentNullException">Ném ra khi Borrower là null.</exception>
     public BorrowingSlip(string slipId, IBorrower borrower, string teachingRoom, DateTime borrowedDate)
     {
-        // 1. Kiểm tra mã phiếu mượn
         if (string.IsNullOrWhiteSpace(slipId))
         {
-            throw new ArgumentException("Mã phiếu mượn không được để trống hoặc chỉ chứa khoảng trắng.", nameof(slipId));
+            throw new ArgumentException("Mã phiếu không được để trống.", nameof(slipId));
         }
 
-        // 2. Kiểm tra đối tượng người mượn
-        Borrower = borrower ?? throw new ArgumentNullException(nameof(borrower), "Thông tin người mượn không được là null.");
+        if (borrower == null)
+        {
+            throw new ArgumentNullException(nameof(borrower), "Người mượn không được null.");
+        }
 
-        // 3. Kiểm tra phòng dạy học
         if (string.IsNullOrWhiteSpace(teachingRoom))
         {
-            throw new ArgumentException("Phòng dạy học không được để trống hoặc chỉ chứa khoảng trắng.", nameof(teachingRoom));
+            throw new ArgumentException("Phòng dạy không được để trống.", nameof(teachingRoom));
         }
 
         SlipId = slipId;
+        Borrower = borrower;
         TeachingRoom = teachingRoom;
         BorrowedDate = borrowedDate;
     }
 
     /// <summary>
-    /// Khởi tạo một phiếu mượn với thời điểm mượn là thời điểm hiện tại.
+    /// Khởi tạo phiếu mượn với ngày mượn là hiện tại.
     /// </summary>
     public BorrowingSlip(string slipId, IBorrower borrower, string teachingRoom)
         : this(slipId, borrower, teachingRoom, DateTime.Now)
@@ -84,78 +77,70 @@ public class BorrowingSlip
     }
 
     /// <summary>
-    /// Thêm một thiết bị vào phiếu mượn với số ngày mượn yêu cầu.
+    /// Thêm thiết bị vào phiếu mượn.
     /// </summary>
-    /// <param name="device">Thiết bị giảng dạy cần mượn.</param>
-    /// <param name="borrowDays">Số ngày yêu cầu mượn.</param>
     public void AddDevice(TeachingDevice device, int borrowDays)
     {
-        // =========================================================================
-        // NGUYÊN TẮC BẢO ĐẢM TÍNH NHẤT QUÁN (Consistency & Transactional Integrity):
-        // Toàn bộ các điều kiện tiên quyết phải được kiểm tra (Validate) TRƯỚC TIÊN.
-        // Nếu có bất kỳ điều kiện nào không thỏa mãn, một ngoại lệ sẽ được ném ra ngay lập tức.
-        // Khi đó, luồng thực thi bị ngắt, KHÔNG CÓ bất kỳ sự thay đổi trạng thái nào xảy ra
-        // đối với thiết bị (vẫn giữ nguyên trạng thái cũ) hay danh sách phiếu (_items không bị thêm dở dang).
-        // =========================================================================
+        // =====================================================================
+        // GIẢI THÍCH TÍNH NHẤT QUÁN:
+        // Ta gọi ValidateBorrowing() trước để kiểm tra toàn bộ 6 điều kiện.
+        // Nếu có lỗi (ném ngoại lệ), hàm sẽ dừng ngay lập tức, không chạy xuống
+        // các dòng dưới. Nhờ đó thiết bị chưa bị đổi sang Borrowed và danh sách
+        // _items cũng không bị thêm dở dang. Dữ liệu được bảo toàn nguyên vẹn.
+        // =====================================================================
 
         ValidateBorrowing(device, borrowDays);
 
-        // Chỉ khi TẤT CẢ các điều kiện đã hoàn toàn hợp lệ, ta mới thực hiện các bước thay đổi dữ liệu:
-        // 1. Tạo đối tượng BorrowItem với DueDate được tính toán chính xác
-        DateTime dueDate = BorrowedDate.AddDays(borrowDays);
-        var item = new BorrowItem(device, BorrowedDate, dueDate);
+        // Sau khi đã hợp lệ toàn bộ mới thực hiện thay đổi:
+        DateTime hanTra = BorrowedDate.AddDays(borrowDays);
+        BorrowItem itemMoi = new BorrowItem(device, BorrowedDate, hanTra);
 
-        // 2. Chuyển trạng thái thiết bị sang Borrowed
+        // Đổi trạng thái thiết bị thành Borrowed
         device.MarkAsBorrowed();
 
-        // 3. Thêm mục mượn vào danh sách nội bộ của phiếu
-        _items.Add(item);
+        // Thêm vào danh sách phiếu
+        _items.Add(itemMoi);
     }
 
     /// <summary>
-    /// Kiểm tra tính hợp lệ của yêu cầu mượn thiết bị theo ĐÚNG thứ tự quy định tại mục 9.1 và yêu cầu hệ thống.
+    /// Kiểm tra hợp lệ khi mượn theo đúng thứ tự đề bài yêu cầu.
     /// </summary>
-    /// <param name="device">Thiết bị cần mượn.</param>
-    /// <param name="borrowDays">Số ngày mượn.</param>
     private void ValidateBorrowing(TeachingDevice device, int borrowDays)
     {
         // Thứ tự (1): Kiểm tra thiết bị không được null
-        // Lý do: Cần đối tượng hợp lệ để truy xuất các thuộc tính Id, Status, MaxBorrowDays ở các bước sau
         if (device == null)
         {
-            throw new ArgumentNullException(nameof(device), "Đối tượng thiết bị không được phép là null.");
+            throw new ArgumentNullException(nameof(device), "Thiết bị không được null.");
         }
 
-        // Thứ tự (2): Kiểm tra số ngày mượn phải lớn hơn 0
-        // Lý do: Số ngày mượn không dương (<= 0) là vi phạm quy tắc thời gian mượn cơ bản
+        // Thứ tự (2): Số ngày mượn phải > 0
         if (borrowDays <= 0)
         {
             throw new InvalidBorrowPeriodException(device.Id, borrowDays, device.MaxBorrowDays);
         }
 
-        // Thứ tự (3): Kiểm tra thiết bị chưa tồn tại trong phiếu
-        // Lý do: Không cho phép mượn cùng một thiết bị hai lần trên cùng một phiếu mượn
-        if (_items.Any(i => string.Equals(i.Device.Id, device.Id, StringComparison.OrdinalIgnoreCase)))
+        // Thứ tự (3): Thiết bị chưa có trong phiếu (không mượn 2 lần)
+        foreach (var item in _items)
         {
-            throw new DuplicateDeviceException(device.Id);
+            if (item.Device.Id.ToLower() == device.Id.ToLower())
+            {
+                throw new DuplicateDeviceException(device.Id);
+            }
         }
 
-        // Thứ tự (4): Kiểm tra người mượn chưa đạt giới hạn số lượng thiết bị cho phép
-        // Lý do: Giảng viên tối đa 3, trợ giảng tối đa 2 thiết bị/phiếu theo quy định của trường
+        // Thứ tự (4): Người mượn chưa đạt giới hạn
         if (_items.Count >= Borrower.GetMaximumDevices())
         {
             throw new BorrowLimitExceededException(Borrower.BorrowerId, Borrower.GetMaximumDevices());
         }
 
-        // Thứ tự (5): Kiểm tra thiết bị đang ở trạng thái sẵn sàng (Available)
-        // Lý do: Thiết bị đang mượn, đang bảo trì hoặc đã thanh lý thì không thể cấp phát
+        // Thứ tự (5): Thiết bị phải đang Available
         if (device.Status != DeviceStatus.Available)
         {
             throw new DeviceUnavailableException(device.Id, device.Status);
         }
 
-        // Thứ tự (6): Kiểm tra thời hạn mượn không vượt quá giới hạn tối đa của riêng thiết bị đó
-        // Lý do: Micro tối đa 1 ngày, Máy chiếu 2 ngày, Điều hòa 3 ngày theo chính sách thiết bị
+        // Thứ tự (6): Số ngày mượn không được quá giới hạn tối đa của thiết bị
         if (borrowDays > device.MaxBorrowDays)
         {
             throw new InvalidBorrowPeriodException(device.Id, borrowDays, device.MaxBorrowDays);
@@ -163,103 +148,119 @@ public class BorrowingSlip
     }
 
     /// <summary>
-    /// Thực hiện trả thiết bị thuộc phiếu mượn, cập nhật trạng thái thiết bị về Available và tính phí phạt nếu trễ hạn.
+    /// Trả thiết bị và tính tiền phạt nếu trễ hạn.
     /// </summary>
-    /// <param name="deviceId">Mã thiết bị cần trả.</param>
-    /// <param name="returnedDate">Ngày giờ trả thiết bị thực tế.</param>
-    /// <returns>Số tiền phạt trả muộn của thiết bị này (VNĐ).</returns>
-    /// <exception cref="ArgumentException">Ném ra khi mã thiết bị rỗng.</exception>
-    /// <exception cref="DeviceNotInSlipException">Ném ra khi thiết bị không thuộc phiếu mượn này.</exception>
-    /// <exception cref="DeviceAlreadyReturnedException">Ném ra khi thiết bị đã được trả trước đó.</exception>
-    /// <exception cref="InvalidReturnDateException">Ném ra khi ngày trả trước ngày mượn.</exception>
     public decimal ReturnDevice(string deviceId, DateTime returnedDate)
     {
-        // =========================================================================
-        // THỨ TỰ THAO TÁC ĐẢM BẢO TÍNH NHẤT QUÁN KHI TRẢ THIẾT BỊ:
-        // 1. Kiểm tra deviceId hợp lệ.
-        // 2. Tìm mục BorrowItem theo mã thiết bị (nếu không thấy -> ném DeviceNotInSlipException).
-        // 3. Kiểm tra xem mục này đã trả chưa (nếu rồi -> ném DeviceAlreadyReturnedException).
-        // 4. Kiểm tra ngày trả so với ngày mượn (nếu trả trước ngày mượn -> ném InvalidReturnDateException).
-        // -> CẢ 4 BƯỚC TRÊN ĐỀU LÀ VALIDATION, CHƯA THAY ĐỔI TRẠNG THÁI NÀO.
-        // 5. Ghi nhận ngày trả vào item (item.Return).
-        // 6. Chuyển thiết bị về Available (device.MarkAsAvailable).
-        // 7. Trả về mức phí phạt nếu có.
-        // Nếu xảy ra lỗi ở bất kỳ bước nào từ 1 đến 4, thiết bị và phiếu hoàn toàn không bị đổi trạng thái!
-        // =========================================================================
+        // =====================================================================
+        // GIẢI THÍCH TÍNH NHẤT QUÁN:
+        // Các bước kiểm tra mã thiết bị, tìm item, kiểm tra đã trả hay chưa,
+        // và kiểm tra ngày trả đều nằm ở trên. Nếu vi phạm, ngoại lệ sẽ ném ra
+        // TRƯỚC KHI gọi item.Return() và device.MarkAsAvailable().
+        // Nhờ vậy nếu có lỗi thì không thiết bị nào bị đổi trạng thái sai.
+        // =====================================================================
 
-        // Bước 1: Kiểm tra mã thiết bị đầu vào
+        // 1. Kiểm tra mã thiết bị
         if (string.IsNullOrWhiteSpace(deviceId))
         {
-            throw new ArgumentException("Mã thiết bị không được để trống hoặc chỉ chứa khoảng trắng.", nameof(deviceId));
+            throw new ArgumentException("Mã thiết bị không được để trống.", nameof(deviceId));
         }
 
-        // Bước 2: Tìm kiếm BorrowItem theo mã thiết bị trong phiếu
-        var item = _items.FirstOrDefault(i => string.Equals(i.Device.Id, deviceId, StringComparison.OrdinalIgnoreCase));
-        if (item == null)
+        // 2. Tìm thiết bị trong phiếu
+        BorrowItem? timItem = null;
+        foreach (var item in _items)
+        {
+            if (item.Device.Id.ToLower() == deviceId.ToLower())
+            {
+                timItem = item;
+                break;
+            }
+        }
+
+        // Nếu không có trong phiếu
+        if (timItem == null)
         {
             throw new DeviceNotInSlipException(deviceId);
         }
 
-        // Bước 3: Kiểm tra thiết bị đã hoàn trả hay chưa
-        if (item.IsReturned)
+        // 3. Nếu đã trả rồi thì báo lỗi
+        if (timItem.IsReturned)
         {
             throw new DeviceAlreadyReturnedException(deviceId);
         }
 
-        // Bước 4: Kiểm tra ngày trả không được trước ngày mượn
-        if (returnedDate < item.BorrowedDate)
+        // 4. Kiểm tra ngày trả không được trước ngày mượn
+        if (returnedDate < timItem.BorrowedDate)
         {
-            throw new InvalidReturnDateException(deviceId, item.BorrowedDate, returnedDate);
+            throw new InvalidReturnDateException(deviceId, timItem.BorrowedDate, returnedDate);
         }
 
-        // Bước 5: Ghi nhận ngày trả cho BorrowItem (thực thi an toàn vì đã qua bước 3 & 4)
-        item.Return(returnedDate);
+        // 5. Ghi nhận trả
+        timItem.Return(returnedDate);
 
-        // Bước 6: Chuyển trạng thái của thiết bị về Available
-        item.Device.MarkAsAvailable();
+        // 6. Chuyển thiết bị về Available
+        timItem.Device.MarkAsAvailable();
 
-        // Bước 7: Tính toán và trả về tiền phạt trễ hạn của thiết bị
-        return item.CalculateLateFee();
+        // 7. Trả về tiền phạt nếu có
+        return timItem.CalculateLateFee();
     }
 
     /// <summary>
-    /// Tính tổng tiền phạt trễ hạn của toàn bộ các thiết bị trong phiếu mượn này.
+    /// Tính tổng tiền phạt trễ của tất cả thiết bị trong phiếu.
     /// </summary>
-    /// <returns>Tổng số tiền phạt trễ hạn (VNĐ).</returns>
-    public decimal CalculateTotalLateFee()
+    public decimal CalculateTotalLateFee(DateTime? asOf = null)
     {
-        return _items.Sum(item => item.CalculateLateFee());
+        decimal tongPhat = 0;
+        foreach (var item in _items)
+        {
+            tongPhat += item.CalculateLateFee(asOf);
+        }
+        return tongPhat;
     }
 
     /// <summary>
-    /// Lọc và trả về danh sách các mục thiết bị bị trễ hạn tính đến thời điểm được chỉ định.
+    /// Lấy danh sách các thiết bị trễ hạn tính đến thời điểm asOf.
     /// </summary>
-    /// <param name="asOf">Thời điểm mốc để đánh giá trễ hạn.</param>
-    /// <returns>Danh sách các BorrowItem trễ hạn (bao gồm đã trả trễ hoặc chưa trả mà đã quá hạn).</returns>
     public List<BorrowItem> GetOverdueItems(DateTime asOf)
     {
-        return _items.Where(item =>
-            // Trường hợp 1: Đã hoàn trả nhưng ngày trả thực tế trễ hơn hạn trả DueDate
-            (item.IsReturned && item.ReturnedDate!.Value.Date > item.DueDate.Date) ||
-            // Trường hợp 2: Chưa hoàn trả và thời điểm mốc asOf đã vượt quá hạn trả DueDate
-            (!item.IsReturned && asOf.Date > item.DueDate.Date)
-        ).ToList();
+        List<BorrowItem> dsTre = new List<BorrowItem>();
+        foreach (var item in _items)
+        {
+            // TH1: Đã trả nhưng ngày trả trễ hơn hạn trả
+            if (item.IsReturned && item.ReturnedDate!.Value.Date > item.DueDate.Date)
+            {
+                dsTre.Add(item);
+            }
+            // TH2: Chưa trả và thời điểm xem xét đã quá hạn trả
+            else if (!item.IsReturned && asOf.Date > item.DueDate.Date)
+            {
+                dsTre.Add(item);
+            }
+        }
+        return dsTre;
     }
 
     /// <summary>
-    /// Lọc và trả về danh sách các mục thiết bị chưa được hoàn trả trong phiếu mượn.
+    /// Lấy danh sách các thiết bị chưa trả trong phiếu.
     /// </summary>
-    /// <returns>Danh sách các BorrowItem chưa trả.</returns>
     public List<BorrowItem> GetUnreturnedItems()
     {
-        return _items.Where(item => !item.IsReturned).ToList();
+        List<BorrowItem> dsChuaTra = new List<BorrowItem>();
+        foreach (var item in _items)
+        {
+            if (!item.IsReturned)
+            {
+                dsChuaTra.Add(item);
+            }
+        }
+        return dsChuaTra;
     }
 
     /// <summary>
-    /// Trả về chuỗi tổng quan thông tin của phiếu mượn.
+    /// Ghi đè ToString hiển thị thông tin phiếu mượn.
     /// </summary>
     public override string ToString()
     {
-        return $"Phiếu mượn: {SlipId} | Người mượn: {Borrower.FullName} ({Borrower.BorrowerId}) | Phòng dạy: {TeachingRoom} | Ngày mượn: {BorrowedDate:dd/MM/yyyy HH:mm} | Thiết bị: {_items.Count} món | Tổng phạt trễ: {CalculateTotalLateFee():N0} đ";
+        return $"Phiếu mượn: {SlipId} | Người mượn: {Borrower.FullName} ({Borrower.BorrowerId}) | Phòng: {TeachingRoom} | Ngày mượn: {BorrowedDate:dd/MM/yyyy} | Số món: {_items.Count} | Phạt trễ: {CalculateTotalLateFee():N0} đ";
     }
 }
