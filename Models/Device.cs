@@ -102,6 +102,12 @@ public abstract class Device
     /// </summary>
     public void Retire()
     {
+        // Không thể thanh lý khi thiết bị đang cho mượn
+        if (Status == DeviceStatus.Borrowed)
+        {
+            throw new InvalidOperationException("Không thể thanh lý thiết bị khi đang được mượn.");
+        }
+
         Status = DeviceStatus.Retired;
     }
 

@@ -15,6 +15,7 @@ internal class Program
         Console.OutputEncoding = Encoding.UTF8;
 
         Console.WriteLine("=== BÀI TẬP OOP: QUẢN LÝ THIẾT BỊ VÀ HỢP ĐỒNG BẢO TRÌ ===");
+        Console.WriteLine("Sinh viên: Nguyễn Minh Hà - MSSV: 202418890\n");
 
         // Gọi chạy phần A: Luồng thành công
         ChayPhanA();

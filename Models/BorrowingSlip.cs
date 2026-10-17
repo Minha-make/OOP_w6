@@ -40,7 +40,7 @@ public class BorrowingSlip
     /// <summary>
     /// Danh sách thiết bị trong phiếu.
     /// </summary>
-    public IReadOnlyList<BorrowItem> Items => _items;
+    public IReadOnlyList<BorrowItem> Items => _items.AsReadOnly();
 
     /// <summary>
     /// Khởi tạo phiếu mượn.
@@ -195,13 +195,22 @@ public class BorrowingSlip
             throw new InvalidReturnDateException(deviceId, timItem.BorrowedDate, returnedDate);
         }
 
-        // 5. Ghi nhận trả
-        timItem.Return(returnedDate);
+        // 5. Kiểm tra trạng thái thiết bị trước khi thực hiện trả
+        // Thiết bị phải đang Borrowed mới có thể hoàn trả hợp lệ
+        if (timItem.Device.Status != DeviceStatus.Borrowed)
+        {
+            throw new InvalidOperationException("Không thể trả thiết bị " + deviceId + " vì thiết bị không ở trạng thái đang mượn (Hiện tại: " + timItem.Device.Status + ").");
+        }
 
-        // 6. Chuyển thiết bị về Available
+        // 6. Chuyển thiết bị về Available trước
+        // Lý do: Nếu bước đổi trạng thái này có lỗi phát sinh thì item vẫn CHƯA bị đánh dấu trả,
+        // giúp bảo toàn tính nhất quán tuyệt đối, không bị lỗi dở dang (như AI rà soát đã chỉ ra).
         timItem.Device.MarkAsAvailable();
 
-        // 7. Trả về tiền phạt nếu có
+        // 7. Ghi nhận ngày trả cho item sau khi thiết bị đã chuyển trạng thái thành công
+        timItem.Return(returnedDate);
+
+        // 8. Trả về tiền phạt nếu có
         return timItem.CalculateLateFee();
     }
 

@@ -34,7 +34,7 @@ public class ClassRoom
     /// <summary>
     /// Danh sách thiết bị trong phòng.
     /// </summary>
-    public IReadOnlyList<Device> Devices => _devices;
+    public IReadOnlyList<Device> Devices => _devices.AsReadOnly();
 
     /// <summary>
     /// Khởi tạo phòng học.
